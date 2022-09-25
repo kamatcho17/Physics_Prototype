@@ -11,7 +11,7 @@ namespace StarterAssets
 #endif
 	public class FirstPersonController : MonoBehaviour
 	{
-		[Header("Player")]
+		[Header("Basics Movement")]
 		[Tooltip("Move speed of the character in m/s")]
 		public float MoveSpeed = 4.0f;
 		[Tooltip("Sprint speed of the character in m/s")]
@@ -21,19 +21,29 @@ namespace StarterAssets
 		[Tooltip("Acceleration and deceleration")]
 		public float SpeedChangeRate = 10.0f;
 
+
 		[Space(10)]
+		[Header("Advanced Movement")]
 		[Tooltip("The depth the player can dash")]
 		public float DashDepth = 1.2f;
 		[Tooltip("The height the player can jump")]
 		public float JumpHeight = 1.2f;
 		[Tooltip("The character uses its own gravity value. The engine default is -9.81f")]
 		public float Gravity = -15.0f;
+		[Tooltip("The Speed when character crouch")]
+		public float CrouchSpeed = 2.0f;
+		[Tooltip("The new Y-Scale of the character when he crouch")]
+		public float CrouchYScale = 0.5f;
+
 
 		[Space(10)]
+		[Header("Movement TimeOut")]
+		[Tooltip("Time required to finish the Crouch animation")]
+		public float CrouchAnimationTimeout = 4.0f;
 		[Tooltip("Time required to pass before being able to Dash again. Set to 0f to instantly jump again")]
 		public float DashTimeout = 1f;
-		[Tooltip("Time required to pass before being able to Dash again. Set to 0f to instantly jump again")]
-		public float AnimationTimeout = 0.5f;
+		[Tooltip("Time required to finish the dash animation")]
+		public float DashAnimationTimeout = 0.5f;
 		[Tooltip("Time required to pass before being able to jump again. Set to 0f to instantly jump again")]
 		public float JumpTimeout = 0.1f;
 		[Tooltip("Time required to pass before entering the fall state. Useful for walking down stairs")]
@@ -64,10 +74,12 @@ namespace StarterAssets
 		private float _speed;
 		private float _rotationVelocity;
 		private float _verticalVelocity;
-		private float _depthVelocity = 1.0f;
+		private float _dashVelocity = 1.0f;
 		private float _terminalVelocity = 53.0f;
+		private float _startYScale;
 
 		// timeout deltatime
+		private float _crouchAnimation;
 		private float _dashTimeoutDelta;
 		private float _animationTimeoutDelta;
 		private float _jumpTimeoutDelta;
@@ -117,10 +129,13 @@ namespace StarterAssets
 #endif
 
 			// reset our timeouts on start
+			_crouchAnimation = CrouchAnimationTimeout;
 			_dashTimeoutDelta = DashTimeout;
-			_animationTimeoutDelta = AnimationTimeout;
+			_animationTimeoutDelta = DashAnimationTimeout;
 			_jumpTimeoutDelta = JumpTimeout;
 			_fallTimeoutDelta = FallTimeout;
+
+			_startYScale = transform.localScale.y;
 		}
 
 		private void Update()
@@ -129,6 +144,8 @@ namespace StarterAssets
 			GroundedCheck();
 			Dash();
 			Move();
+			Crouch();
+
 		}
 
 		private void LateUpdate()
@@ -167,8 +184,20 @@ namespace StarterAssets
 
 		private void Move()
 		{
-			// set target speed based on move speed, sprint speed and if sprint is pressed
-			float targetSpeed = _input.sprint ? SprintSpeed : MoveSpeed;
+			// set target speed based on move speed, sprint speed, crouch speed
+			float targetSpeed = 0.0f;
+
+			if (_input.sprint)  targetSpeed = SprintSpeed;
+
+			else if (_input.crouch)
+				{ 
+					targetSpeed = CrouchSpeed;
+				}
+            else
+            {
+				targetSpeed = MoveSpeed;
+            }
+
 
 			// a simplistic acceleration and deceleration designed to be easy to remove, replace, or iterate upon
 
@@ -205,12 +234,30 @@ namespace StarterAssets
 			if (_input.move != Vector2.zero)
 			{
 				// move
-				inputDirection = transform.right * _input.move.x  + transform.forward * _input.move.y * _depthVelocity;
+				inputDirection = transform.right * _input.move.x  + transform.forward * _input.move.y ;
 				
 			}
 
 			// move the player
-			_controller.Move(inputDirection.normalized * (_depthVelocity *_speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+			_controller.Move(inputDirection.normalized * (_dashVelocity * _speed * Time.deltaTime) + new Vector3(0.0f, _verticalVelocity, 0.0f) * Time.deltaTime);
+		}
+
+		private void Crouch()
+        {
+
+			Vector3 newScale = ( Grounded && _input.crouch) ?  new Vector3(transform.localScale.x, CrouchYScale, transform.localScale.z) : new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
+			/*if (Grounded && _input.crouch)
+            {
+				Vector3 newScale = new Vector3(transform.localScale.x, CrouchYScale, transform.localScale.z);
+			}
+
+            if (!_input.crouch)
+            {
+				//transform.localScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
+				Vector3 newScale = new Vector3(transform.localScale.x, _startYScale, transform.localScale.z);
+			}*/
+
+			transform.localScale = Vector3.Lerp(transform.localScale, newScale, _crouchAnimation * Time.deltaTime);
 		}
 
 		private void JumpAndGravity()
@@ -268,7 +315,7 @@ namespace StarterAssets
 			if (_input.dash && _dashTimeoutDelta <= 0.0f)
 			{
 				// the square root of H * -2 * G = how much velocity needed to reach desired depth
-				_depthVelocity = Mathf.Sqrt(DashDepth);
+				_dashVelocity = Mathf.Sqrt(DashDepth);
 
 				_dashed = true;
 
@@ -287,14 +334,13 @@ namespace StarterAssets
             {
 				if (_animationTimeoutDelta > 0)
 				{
-					Debug.Log(_animationTimeoutDelta);
 					_animationTimeoutDelta -= Time.deltaTime;
 				}
 				else
 				{
 					_dashed = false;
-					_depthVelocity = 1f;
-					_animationTimeoutDelta = AnimationTimeout;
+					_dashVelocity = 1f;
+					_animationTimeoutDelta = DashAnimationTimeout;
 				}
 			}
 			
